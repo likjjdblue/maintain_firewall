@@ -1,0 +1,1202 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>防火墙管理工具</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #0f1117;
+      --bg2: #1a1d27;
+      --bg3: #242736;
+      --border: #2e3247;
+      --accent: #4f8ef7;
+      --accent-hover: #3a7ae4;
+      --danger: #e05252;
+      --danger-hover: #c94040;
+      --success: #3ec97e;
+      --warning: #f0a732;
+      --text: #e2e6f0;
+      --text2: #8b93a8;
+      --radius: 8px;
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "PingFang SC", "Microsoft YaHei", sans-serif;
+      font-size: 14px;
+      min-height: 100vh;
+    }
+
+    /* ---- Top Bar ---- */
+    .topbar {
+      background: var(--bg2);
+      border-bottom: 1px solid var(--border);
+      padding: 0 24px;
+      height: 56px;
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+    .topbar-title {
+      font-size: 18px;
+      font-weight: 600;
+      color: var(--text);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .topbar-title svg { color: var(--accent); }
+    .status-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 10px;
+      border-radius: 20px;
+      font-size: 12px;
+      font-weight: 500;
+    }
+    .status-badge.running { background: rgba(62,201,126,.15); color: var(--success); }
+    .status-badge.stopped { background: rgba(224,82,82,.15); color: var(--danger); }
+    .status-dot {
+      width: 7px; height: 7px;
+      border-radius: 50%;
+      background: currentColor;
+    }
+    .topbar-meta { margin-left: auto; color: var(--text2); font-size: 12px; display: flex; gap: 16px; }
+    .topbar-meta span { display: flex; align-items: center; gap: 4px; }
+
+    /* ---- Layout ---- */
+    .layout {
+      display: flex;
+      min-height: calc(100vh - 56px);
+    }
+
+    /* ---- Sidebar ---- */
+    .sidebar {
+      width: 220px;
+      flex-shrink: 0;
+      background: var(--bg2);
+      border-right: 1px solid var(--border);
+      padding: 16px 0;
+    }
+    .sidebar-label {
+      padding: 8px 16px 4px;
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--text2);
+      text-transform: uppercase;
+      letter-spacing: .08em;
+    }
+    .zone-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 9px 16px;
+      cursor: pointer;
+      border-left: 3px solid transparent;
+      color: var(--text2);
+      transition: all .15s;
+    }
+    .zone-item:hover { background: var(--bg3); color: var(--text); }
+    .zone-item.active {
+      background: rgba(79,142,247,.1);
+      border-left-color: var(--accent);
+      color: var(--accent);
+    }
+    .zone-icon {
+      width: 7px; height: 7px;
+      border-radius: 50%;
+      background: var(--border);
+      flex-shrink: 0;
+    }
+    .zone-item.active .zone-icon { background: var(--accent); }
+
+    /* ---- Main ---- */
+    .main {
+      flex: 1;
+      padding: 24px;
+      overflow-y: auto;
+    }
+
+    /* ---- Zone Header ---- */
+    .zone-header {
+      margin-bottom: 20px;
+    }
+    .zone-header h2 {
+      font-size: 20px;
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .zone-header .meta {
+      margin-top: 6px;
+      color: var(--text2);
+      font-size: 13px;
+      display: flex;
+      gap: 16px;
+      flex-wrap: wrap;
+    }
+    .meta-item { display: flex; align-items: center; gap: 4px; }
+
+    /* ---- Tabs ---- */
+    .tabs {
+      display: flex;
+      gap: 2px;
+      border-bottom: 1px solid var(--border);
+      margin-bottom: 20px;
+    }
+    .tab-btn {
+      padding: 10px 18px;
+      background: none;
+      border: none;
+      border-bottom: 2px solid transparent;
+      color: var(--text2);
+      cursor: pointer;
+      font-size: 14px;
+      transition: all .15s;
+      margin-bottom: -1px;
+    }
+    .tab-btn:hover { color: var(--text); }
+    .tab-btn.active { color: var(--accent); border-bottom-color: var(--accent); }
+    .tab-panel { display: none; }
+    .tab-panel.active { display: block; }
+
+    /* ---- Cards ---- */
+    .card {
+      background: var(--bg2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      margin-bottom: 16px;
+    }
+    .card-header {
+      padding: 14px 18px;
+      border-bottom: 1px solid var(--border);
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+    }
+    .card-body { padding: 18px; }
+
+    /* ---- Table ---- */
+    .table-wrap { overflow-x: auto; }
+    table { width: 100%; border-collapse: collapse; }
+    th {
+      text-align: left;
+      padding: 8px 12px;
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--text2);
+      text-transform: uppercase;
+      letter-spacing: .05em;
+      border-bottom: 1px solid var(--border);
+    }
+    td { padding: 10px 12px; border-bottom: 1px solid var(--border); }
+    tr:last-child td { border-bottom: none; }
+    tr:hover td { background: rgba(255,255,255,.02); }
+    .tag {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 4px;
+      font-size: 12px;
+      background: var(--bg3);
+      color: var(--text2);
+      border: 1px solid var(--border);
+    }
+    .tag.blue { background: rgba(79,142,247,.15); color: var(--accent); border-color: rgba(79,142,247,.3); }
+    .tag.green { background: rgba(62,201,126,.15); color: var(--success); border-color: rgba(62,201,126,.3); }
+    .empty-row td { text-align: center; color: var(--text2); padding: 24px; }
+
+    /* ---- Form ---- */
+    .form-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+      gap: 12px;
+    }
+    .form-group { display: flex; flex-direction: column; gap: 6px; }
+    .form-group.full { grid-column: 1 / -1; }
+    label { font-size: 12px; color: var(--text2); font-weight: 500; }
+    input, select, textarea {
+      background: var(--bg3);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      color: var(--text);
+      padding: 8px 10px;
+      font-size: 13px;
+      font-family: inherit;
+      transition: border-color .15s;
+      outline: none;
+    }
+    input:focus, select:focus, textarea:focus { border-color: var(--accent); }
+    textarea { resize: vertical; min-height: 72px; }
+    select option { background: var(--bg3); }
+
+    .form-actions {
+      margin-top: 14px;
+      display: flex;
+      gap: 8px;
+      align-items: center;
+    }
+
+    /* ---- Buttons ---- */
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 8px 16px;
+      border-radius: 6px;
+      border: none;
+      cursor: pointer;
+      font-size: 13px;
+      font-weight: 500;
+      font-family: inherit;
+      transition: all .15s;
+    }
+    .btn-primary { background: var(--accent); color: #fff; }
+    .btn-primary:hover { background: var(--accent-hover); }
+    .btn-danger { background: var(--danger); color: #fff; }
+    .btn-danger:hover { background: var(--danger-hover); }
+    .btn-ghost {
+      background: transparent;
+      color: var(--text2);
+      border: 1px solid var(--border);
+    }
+    .btn-ghost:hover { background: var(--bg3); color: var(--text); }
+    .btn-sm { padding: 5px 10px; font-size: 12px; }
+    .btn:disabled { opacity: .5; cursor: not-allowed; }
+
+    /* ---- Flags row ---- */
+    .flags-row {
+      display: flex;
+      gap: 16px;
+      align-items: center;
+    }
+    .checkbox-group {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      cursor: pointer;
+      font-size: 13px;
+      color: var(--text2);
+    }
+    .checkbox-group input[type=checkbox] { width: 14px; height: 14px; accent-color: var(--accent); }
+
+    /* ---- Rich rule mode toggle ---- */
+    .mode-toggle {
+      display: flex;
+      gap: 0;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      overflow: hidden;
+      width: fit-content;
+      margin-bottom: 14px;
+    }
+    .mode-btn {
+      padding: 7px 16px;
+      font-size: 12px;
+      font-weight: 500;
+      background: none;
+      border: none;
+      color: var(--text2);
+      cursor: pointer;
+      transition: all .15s;
+    }
+    .mode-btn.active { background: var(--accent); color: #fff; }
+
+    /* ---- Toast ---- */
+    #toast-container {
+      position: fixed;
+      top: 70px;
+      right: 20px;
+      z-index: 9999;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .toast {
+      min-width: 260px;
+      max-width: 380px;
+      padding: 12px 16px;
+      border-radius: var(--radius);
+      border-left: 4px solid;
+      font-size: 13px;
+      line-height: 1.5;
+      animation: slide-in .2s ease;
+      background: var(--bg2);
+      box-shadow: 0 4px 20px rgba(0,0,0,.4);
+    }
+    .toast.success { border-color: var(--success); color: var(--success); }
+    .toast.error { border-color: var(--danger); color: var(--danger); }
+    .toast .toast-msg { color: var(--text); }
+    @keyframes slide-in {
+      from { transform: translateX(30px); opacity: 0; }
+      to { transform: translateX(0); opacity: 1; }
+    }
+
+    /* ---- Loading ---- */
+    .loading { display: flex; align-items: center; gap: 8px; color: var(--text2); padding: 20px; }
+    .spinner {
+      width: 16px; height: 16px;
+      border: 2px solid var(--border);
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      animation: spin .6s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ---- Placeholder ---- */
+    .placeholder {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 60px 20px;
+      color: var(--text2);
+      text-align: center;
+      gap: 12px;
+    }
+    .placeholder svg { opacity: .3; }
+    .placeholder p { font-size: 15px; }
+
+    /* ---- Divider ---- */
+    hr { border: none; border-top: 1px solid var(--border); margin: 16px 0; }
+
+    /* ---- Rich rule code ---- */
+    .rule-code {
+      font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+      font-size: 12px;
+      color: var(--warning);
+      word-break: break-all;
+    }
+
+    /* ---- Overview grid ---- */
+    .stat-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+      gap: 12px;
+      margin-bottom: 20px;
+    }
+    .stat-card {
+      background: var(--bg3);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 16px;
+      text-align: center;
+    }
+    .stat-num { font-size: 28px; font-weight: 700; color: var(--accent); }
+    .stat-label { font-size: 12px; color: var(--text2); margin-top: 4px; }
+
+    /* Responsive */
+    @media (max-width: 768px) {
+      .sidebar { display: none; }
+      .form-grid { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- Top Bar -->
+<header class="topbar">
+  <div class="topbar-title">
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+      <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+    </svg>
+    防火墙管理工具
+  </div>
+  <div id="fw-status-badge" class="status-badge stopped">
+    <span class="status-dot"></span>
+    <span id="fw-status-text">检测中...</span>
+  </div>
+  <div class="topbar-meta">
+    <span id="meta-version" title="firewalld 版本"></span>
+    <span id="meta-default-zone" title="默认 Zone"></span>
+  </div>
+</header>
+
+<!-- Layout -->
+<div class="layout">
+  <!-- Sidebar -->
+  <nav class="sidebar">
+    <div class="sidebar-label">Zone 列表</div>
+    <div id="zone-list">
+      <div class="loading"><span class="spinner"></span> 加载中...</div>
+    </div>
+  </nav>
+
+  <!-- Main Content -->
+  <main class="main" id="main-content">
+    <div class="placeholder">
+      <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2">
+        <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+      </svg>
+      <p>请从左侧选择一个 Zone 进行管理</p>
+    </div>
+  </main>
+</div>
+
+<!-- Toast Container -->
+<div id="toast-container"></div>
+
+<script>
+const API = '/api/v1';
+let currentZone = null;
+let allServices = [];
+
+/* ---- Utility ---- */
+function toast(msg, type = 'success') {
+  const el = document.createElement('div');
+  el.className = `toast ${type}`;
+  el.innerHTML = `<strong>${type === 'success' ? '成功' : '错误'}</strong><div class="toast-msg">${msg}</div>`;
+  document.getElementById('toast-container').appendChild(el);
+  setTimeout(() => el.remove(), 4000);
+}
+
+async function api(method, path, body) {
+  const opts = {
+    method,
+    headers: { 'Content-Type': 'application/json' },
+  };
+  if (body) opts.body = JSON.stringify(body);
+  const res = await fetch(API + path, opts);
+  return res.json();
+}
+
+function esc(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+/* ---- Status ---- */
+async function loadStatus() {
+  try {
+    const data = await api('GET', '/status');
+    if (data.success) {
+      const d = data.data;
+      const badge = document.getElementById('fw-status-badge');
+      const txt = document.getElementById('fw-status-text');
+      if (d.state === 'running') {
+        badge.className = 'status-badge running';
+        txt.textContent = '运行中';
+      } else {
+        badge.className = 'status-badge stopped';
+        txt.textContent = '未运行';
+      }
+      const vEl = document.getElementById('meta-version');
+      if (d.firewalld_version && d.firewalld_version !== 'unknown') {
+        vEl.textContent = `firewalld ${d.firewalld_version}`;
+      }
+      const dzEl = document.getElementById('meta-default-zone');
+      if (d.default_zone) {
+        dzEl.textContent = `默认 Zone: ${d.default_zone}`;
+      }
+    }
+  } catch(e) { /* ignore */ }
+}
+
+/* ---- Zones ---- */
+async function loadZones() {
+  try {
+    const data = await api('GET', '/zones');
+    const container = document.getElementById('zone-list');
+    if (!data.success) {
+      container.innerHTML = '<div style="padding:12px 16px;color:var(--danger);font-size:12px;">加载失败</div>';
+      return;
+    }
+    const zones = data.data.zones;
+    container.innerHTML = zones.map(z => `
+      <div class="zone-item" data-zone="${esc(z)}" onclick="selectZone('${esc(z)}')">
+        <span class="zone-icon"></span>
+        ${esc(z)}
+      </div>
+    `).join('');
+  } catch(e) {
+    document.getElementById('zone-list').innerHTML = '<div style="padding:12px 16px;color:var(--danger);font-size:12px;">网络错误</div>';
+  }
+}
+
+/* ---- All Services (for dropdown) ---- */
+async function loadAllServices() {
+  try {
+    const data = await api('GET', '/services');
+    if (data.success) allServices = data.data.services;
+  } catch(e) {}
+}
+
+/* ---- Select Zone ---- */
+async function selectZone(zone) {
+  currentZone = zone;
+  // Update sidebar
+  document.querySelectorAll('.zone-item').forEach(el => {
+    el.classList.toggle('active', el.dataset.zone === zone);
+  });
+  // Render main
+  const main = document.getElementById('main-content');
+  main.innerHTML = `<div class="loading"><span class="spinner"></span> 加载 Zone 数据...</div>`;
+  try {
+    const data = await api('GET', `/zones/${zone}`);
+    if (!data.success) {
+      main.innerHTML = `<div style="color:var(--danger);padding:20px;">${esc(data.message)}</div>`;
+      return;
+    }
+    renderZone(data.data);
+  } catch(e) {
+    main.innerHTML = `<div style="color:var(--danger);padding:20px;">加载失败：网络错误</div>`;
+  }
+}
+
+/* ---- Render Zone ---- */
+function renderZone(d) {
+  const main = document.getElementById('main-content');
+  main.innerHTML = `
+    <div class="zone-header">
+      <h2>
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2">
+          <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+        </svg>
+        ${esc(d.zone)}
+        <span class="tag">${esc(d.target || 'default')}</span>
+      </h2>
+      <div class="meta">
+        ${d.interfaces && d.interfaces.length ? `<span class="meta-item">🔌 网卡: ${d.interfaces.map(esc).join(', ')}</span>` : ''}
+        <span class="meta-item">🔷 端口: ${d.ports ? d.ports.length : 0} 条</span>
+        <span class="meta-item">⚙️ 服务: ${d.services ? d.services.length : 0} 条</span>
+        <span class="meta-item">📋 富规则: ${d.rich_rules ? d.rich_rules.length : 0} 条</span>
+        <span class="meta-item">🌐 来源: ${d.sources ? d.sources.length : 0} 条</span>
+      </div>
+    </div>
+
+    <div class="tabs">
+      <button class="tab-btn active" onclick="switchTab('overview', this)">概览</button>
+      <button class="tab-btn" onclick="switchTab('ports', this)">端口规则</button>
+      <button class="tab-btn" onclick="switchTab('services', this)">服务规则</button>
+      <button class="tab-btn" onclick="switchTab('rich-rules', this)">富规则</button>
+      <button class="tab-btn" onclick="switchTab('sources', this)">来源地址</button>
+    </div>
+
+    <div id="tab-overview" class="tab-panel active">${renderOverview(d)}</div>
+    <div id="tab-ports" class="tab-panel">${renderPorts(d.ports || [])}</div>
+    <div id="tab-services" class="tab-panel">${renderServices(d.services || [])}</div>
+    <div id="tab-rich-rules" class="tab-panel">${renderRichRules(d.rich_rules || [])}</div>
+    <div id="tab-sources" class="tab-panel">${renderSources(d.sources || [])}</div>
+  `;
+}
+
+function switchTab(name, btn) {
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+  btn.classList.add('active');
+  document.getElementById(`tab-${name}`).classList.add('active');
+}
+
+/* ---- Overview ---- */
+function renderOverview(d) {
+  const ports = d.ports || [];
+  const services = d.services || [];
+  const rules = d.rich_rules || [];
+  const sources = d.sources || [];
+  return `
+    <div class="stat-grid">
+      <div class="stat-card">
+        <div class="stat-num">${ports.length}</div>
+        <div class="stat-label">开放端口</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-num">${services.length}</div>
+        <div class="stat-label">启用服务</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-num">${rules.length}</div>
+        <div class="stat-label">富规则</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-num">${sources.length}</div>
+        <div class="stat-label">来源地址</div>
+      </div>
+    </div>
+    ${ports.length > 0 ? `
+    <div class="card">
+      <div class="card-header">开放端口</div>
+      <div class="card-body" style="display:flex;flex-wrap:wrap;gap:8px;">
+        ${ports.map(p => `<span class="tag blue">${esc(p)}</span>`).join('')}
+      </div>
+    </div>` : ''}
+    ${services.length > 0 ? `
+    <div class="card">
+      <div class="card-header">启用服务</div>
+      <div class="card-body" style="display:flex;flex-wrap:wrap;gap:8px;">
+        ${services.map(s => `<span class="tag green">${esc(s)}</span>`).join('')}
+      </div>
+    </div>` : ''}
+    ${rules.length > 0 ? `
+    <div class="card">
+      <div class="card-header">富规则</div>
+      <div class="card-body" style="display:flex;flex-direction:column;gap:8px;">
+        ${rules.map(r => `<code class="rule-code">${esc(r)}</code>`).join('')}
+      </div>
+    </div>` : ''}
+    ${sources.length > 0 ? `
+    <div class="card">
+      <div class="card-header">来源地址</div>
+      <div class="card-body" style="display:flex;flex-wrap:wrap;gap:8px;">
+        ${sources.map(s => `<span class="tag">${esc(s)}</span>`).join('')}
+      </div>
+    </div>` : ''}
+    ${ports.length === 0 && services.length === 0 && rules.length === 0 && sources.length === 0 ? `
+    <div class="card">
+      <div class="card-body">
+        <div class="placeholder" style="padding:30px 20px;">
+          <p>该 Zone 暂无任何规则</p>
+        </div>
+      </div>
+    </div>` : ''}
+  `;
+}
+
+/* ---- Ports Tab ---- */
+function renderPorts(ports) {
+  return `
+    <div class="card">
+      <div class="card-header">已开放端口</div>
+      <div class="card-body">
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr><th>端口/协议</th><th>操作</th></tr>
+            </thead>
+            <tbody id="ports-tbody">
+              ${ports.length === 0
+                ? '<tr class="empty-row"><td colspan="2">暂无端口规则</td></tr>'
+                : ports.map(p => {
+                    const [port, proto] = p.split('/');
+                    return `<tr>
+                      <td><span class="tag blue">${esc(p)}</span></td>
+                      <td>
+                        <button class="btn btn-danger btn-sm" onclick="deletePort('${esc(port)}','${esc(proto)}',null,this)">删除</button>
+                      </td>
+                    </tr>`;
+                  }).join('')
+              }
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-header">新增端口规则</div>
+      <div class="card-body">
+        <form onsubmit="addPort(event)">
+          <div class="form-grid">
+            <div class="form-group">
+              <label>端口号 *</label>
+              <input type="text" id="port-in" placeholder="如 8080 或 8000-8100" required />
+            </div>
+            <div class="form-group">
+              <label>协议 *</label>
+              <select id="port-proto">
+                <option value="tcp">TCP</option>
+                <option value="udp">UDP</option>
+                <option value="sctp">SCTP</option>
+                <option value="dccp">DCCP</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label>来源 IP / CIDR（可选）</label>
+              <input type="text" id="port-src" placeholder="如 192.168.1.0/24" />
+            </div>
+          </div>
+          <div class="form-actions">
+            <div class="flags-row">
+              <label class="checkbox-group"><input type="checkbox" id="port-perm-only"> 仅永久</label>
+              <label class="checkbox-group"><input type="checkbox" id="port-rt-only"> 仅运行时</label>
+            </div>
+            <button type="submit" class="btn btn-primary">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12l7 7 7-7"/></svg>
+              添加规则
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  `;
+}
+
+async function addPort(e) {
+  e.preventDefault();
+  const port = document.getElementById('port-in').value.trim();
+  const protocol = document.getElementById('port-proto').value;
+  const source_ip = document.getElementById('port-src').value.trim();
+  const permanent_only = document.getElementById('port-perm-only').checked;
+  const runtime_only = document.getElementById('port-rt-only').checked;
+  const body = { port, protocol, permanent_only, runtime_only };
+  if (source_ip) body.source_ip = source_ip;
+  try {
+    const data = await api('POST', `/zones/${currentZone}/ports`, body);
+    if (data.success) {
+      toast(data.message);
+      refreshTab('ports');
+    } else {
+      toast(data.message, 'error');
+    }
+  } catch(err) {
+    toast('请求失败：网络错误', 'error');
+  }
+}
+
+async function deletePort(port, protocol, source_ip, btn) {
+  if (!confirm(`确认删除端口规则 ${port}/${protocol}？`)) return;
+  btn.disabled = true;
+  const body = { port, protocol };
+  if (source_ip) body.source_ip = source_ip;
+  try {
+    const data = await api('DELETE', `/zones/${currentZone}/ports`, body);
+    if (data.success) {
+      toast(data.message);
+      refreshTab('ports');
+    } else {
+      toast(data.message, 'error');
+      btn.disabled = false;
+    }
+  } catch(err) {
+    toast('请求失败：网络错误', 'error');
+    btn.disabled = false;
+  }
+}
+
+/* ---- Services Tab ---- */
+function renderServices(services) {
+  const svcOpts = allServices.map(s =>
+    `<option value="${esc(s)}">${esc(s)}</option>`
+  ).join('');
+  return `
+    <div class="card">
+      <div class="card-header">已启用服务</div>
+      <div class="card-body">
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr><th>服务名</th><th>操作</th></tr>
+            </thead>
+            <tbody id="services-tbody">
+              ${services.length === 0
+                ? '<tr class="empty-row"><td colspan="2">暂无服务规则</td></tr>'
+                : services.map(s => `<tr>
+                    <td><span class="tag green">${esc(s)}</span></td>
+                    <td>
+                      <button class="btn btn-danger btn-sm" onclick="deleteService('${esc(s)}',this)">删除</button>
+                    </td>
+                  </tr>`).join('')
+              }
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-header">新增服务规则</div>
+      <div class="card-body">
+        <form onsubmit="addService(event)">
+          <div class="form-grid">
+            <div class="form-group">
+              <label>服务名称 *</label>
+              <select id="svc-name">
+                <option value="">-- 选择服务 --</option>
+                ${svcOpts}
+              </select>
+            </div>
+          </div>
+          <div class="form-actions">
+            <div class="flags-row">
+              <label class="checkbox-group"><input type="checkbox" id="svc-perm-only"> 仅永久</label>
+              <label class="checkbox-group"><input type="checkbox" id="svc-rt-only"> 仅运行时</label>
+            </div>
+            <button type="submit" class="btn btn-primary">添加服务</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  `;
+}
+
+async function addService(e) {
+  e.preventDefault();
+  const service = document.getElementById('svc-name').value;
+  if (!service) { toast('请选择服务名称', 'error'); return; }
+  const permanent_only = document.getElementById('svc-perm-only').checked;
+  const runtime_only = document.getElementById('svc-rt-only').checked;
+  try {
+    const data = await api('POST', `/zones/${currentZone}/services`, { service, permanent_only, runtime_only });
+    if (data.success) {
+      toast(data.message);
+      refreshTab('services');
+    } else {
+      toast(data.message, 'error');
+    }
+  } catch(err) {
+    toast('请求失败：网络错误', 'error');
+  }
+}
+
+async function deleteService(service, btn) {
+  if (!confirm(`确认删除服务规则 ${service}？`)) return;
+  btn.disabled = true;
+  try {
+    const data = await api('DELETE', `/zones/${currentZone}/services`, { service });
+    if (data.success) {
+      toast(data.message);
+      refreshTab('services');
+    } else {
+      toast(data.message, 'error');
+      btn.disabled = false;
+    }
+  } catch(err) {
+    toast('请求失败：网络错误', 'error');
+    btn.disabled = false;
+  }
+}
+
+/* ---- Rich Rules Tab ---- */
+function renderRichRules(rules) {
+  return `
+    <div class="card">
+      <div class="card-header">富规则列表</div>
+      <div class="card-body">
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr><th>规则</th><th style="width:80px">操作</th></tr>
+            </thead>
+            <tbody id="rr-tbody">
+              ${rules.length === 0
+                ? '<tr class="empty-row"><td colspan="2">暂无富规则</td></tr>'
+                : rules.map((r, i) => `<tr>
+                    <td><code class="rule-code">${esc(r)}</code></td>
+                    <td>
+                      <button class="btn btn-danger btn-sm" onclick="deleteRichRule(${i}, this)">删除</button>
+                    </td>
+                  </tr>`).join('')
+              }
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-header">新增富规则</div>
+      <div class="card-body">
+        <div class="mode-toggle">
+          <button class="mode-btn active" id="rr-mode-raw-btn" onclick="setRRMode('raw')">原始字符串</button>
+          <button class="mode-btn" id="rr-mode-struct-btn" onclick="setRRMode('struct')">结构化参数</button>
+        </div>
+
+        <!-- Raw mode -->
+        <div id="rr-raw-form">
+          <form onsubmit="addRichRuleRaw(event)">
+            <div class="form-group full">
+              <label>规则字符串 *</label>
+              <textarea id="rr-raw-input" placeholder='rule family="ipv4" source address="192.168.1.0/24" service name="http" accept'></textarea>
+            </div>
+            <div class="form-actions" style="margin-top:10px;">
+              <div class="flags-row">
+                <label class="checkbox-group"><input type="checkbox" id="rr-raw-perm-only"> 仅永久</label>
+                <label class="checkbox-group"><input type="checkbox" id="rr-raw-rt-only"> 仅运行时</label>
+              </div>
+              <button type="submit" class="btn btn-primary">添加富规则</button>
+            </div>
+          </form>
+        </div>
+
+        <!-- Structured mode -->
+        <div id="rr-struct-form" style="display:none;">
+          <form onsubmit="addRichRuleStruct(event)">
+            <div class="form-grid">
+              <div class="form-group">
+                <label>IP 协议族</label>
+                <select id="rr-family">
+                  <option value="ipv4">IPv4</option>
+                  <option value="ipv6">IPv6</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label>来源地址</label>
+                <input type="text" id="rr-src" placeholder="如 192.168.1.0/24" />
+              </div>
+              <div class="form-group">
+                <label>目标地址</label>
+                <input type="text" id="rr-dst" placeholder="可选" />
+              </div>
+              <div class="form-group">
+                <label>服务名（与端口二选一）</label>
+                <input type="text" id="rr-svc" placeholder="如 http, ssh" />
+              </div>
+              <div class="form-group">
+                <label>端口（与服务二选一）</label>
+                <input type="text" id="rr-port" placeholder="如 8080" />
+              </div>
+              <div class="form-group">
+                <label>端口协议</label>
+                <select id="rr-proto">
+                  <option value="">-- 不指定 --</option>
+                  <option value="tcp">TCP</option>
+                  <option value="udp">UDP</option>
+                  <option value="sctp">SCTP</option>
+                  <option value="dccp">DCCP</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label>动作 *</label>
+                <select id="rr-action">
+                  <option value="accept">accept（允许）</option>
+                  <option value="reject">reject（拒绝并响应）</option>
+                  <option value="drop">drop（丢弃）</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label>优先级</label>
+                <input type="number" id="rr-priority" value="0" min="-32768" max="32767" />
+              </div>
+              <div class="form-group">
+                <label>日志前缀</label>
+                <input type="text" id="rr-log-prefix" placeholder="可选" />
+              </div>
+              <div class="form-group">
+                <label>日志级别</label>
+                <select id="rr-log-level">
+                  <option value="">-- 不记录日志 --</option>
+                  <option value="debug">debug</option>
+                  <option value="info">info</option>
+                  <option value="notice">notice</option>
+                  <option value="warning">warning</option>
+                  <option value="err">err</option>
+                  <option value="crit">crit</option>
+                  <option value="alert">alert</option>
+                  <option value="emerg">emerg</option>
+                </select>
+              </div>
+            </div>
+            <div class="form-actions" style="margin-top:10px;">
+              <label class="checkbox-group"><input type="checkbox" id="rr-src-invert"> 来源地址取反</label>
+              <div class="flags-row" style="margin-left:8px;">
+                <label class="checkbox-group"><input type="checkbox" id="rr-struct-perm-only"> 仅永久</label>
+                <label class="checkbox-group"><input type="checkbox" id="rr-struct-rt-only"> 仅运行时</label>
+              </div>
+              <button type="submit" class="btn btn-primary">添加富规则</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+// Store rich rules for delete by index
+let currentRichRules = [];
+
+function setRRMode(mode) {
+  const isRaw = mode === 'raw';
+  document.getElementById('rr-raw-form').style.display = isRaw ? '' : 'none';
+  document.getElementById('rr-struct-form').style.display = isRaw ? 'none' : '';
+  document.getElementById('rr-mode-raw-btn').classList.toggle('active', isRaw);
+  document.getElementById('rr-mode-struct-btn').classList.toggle('active', !isRaw);
+}
+
+async function addRichRuleRaw(e) {
+  e.preventDefault();
+  const rule = document.getElementById('rr-raw-input').value.trim();
+  if (!rule) { toast('请输入规则字符串', 'error'); return; }
+  const permanent_only = document.getElementById('rr-raw-perm-only').checked;
+  const runtime_only = document.getElementById('rr-raw-rt-only').checked;
+  try {
+    const data = await api('POST', `/zones/${currentZone}/rich-rules`, { rule, permanent_only, runtime_only });
+    if (data.success) {
+      toast(data.message);
+      refreshTab('rich-rules');
+    } else {
+      toast(data.message, 'error');
+    }
+  } catch(err) {
+    toast('请求失败：网络错误', 'error');
+  }
+}
+
+async function addRichRuleStruct(e) {
+  e.preventDefault();
+  const body = {
+    structured: true,
+    family: document.getElementById('rr-family').value,
+    source_address: document.getElementById('rr-src').value.trim(),
+    source_invert: document.getElementById('rr-src-invert').checked,
+    destination_address: document.getElementById('rr-dst').value.trim(),
+    service: document.getElementById('rr-svc').value.trim(),
+    port: document.getElementById('rr-port').value.trim(),
+    protocol: document.getElementById('rr-proto').value,
+    action: document.getElementById('rr-action').value,
+    log_prefix: document.getElementById('rr-log-prefix').value.trim(),
+    log_level: document.getElementById('rr-log-level').value,
+    priority: parseInt(document.getElementById('rr-priority').value) || 0,
+    permanent_only: document.getElementById('rr-struct-perm-only').checked,
+    runtime_only: document.getElementById('rr-struct-rt-only').checked,
+  };
+  try {
+    const data = await api('POST', `/zones/${currentZone}/rich-rules`, body);
+    if (data.success) {
+      toast(data.message);
+      refreshTab('rich-rules');
+    } else {
+      toast(data.message, 'error');
+    }
+  } catch(err) {
+    toast('请求失败：网络错误', 'error');
+  }
+}
+
+async function deleteRichRule(idx, btn) {
+  const rule = currentRichRules[idx];
+  if (!rule) { toast('规则索引错误', 'error'); return; }
+  if (!confirm(`确认删除以下富规则？\n${rule}`)) return;
+  btn.disabled = true;
+  try {
+    const data = await api('DELETE', `/zones/${currentZone}/rich-rules`, { rule });
+    if (data.success) {
+      toast(data.message);
+      refreshTab('rich-rules');
+    } else {
+      toast(data.message, 'error');
+      btn.disabled = false;
+    }
+  } catch(err) {
+    toast('请求失败：网络错误', 'error');
+    btn.disabled = false;
+  }
+}
+
+/* ---- Sources Tab ---- */
+function renderSources(sources) {
+  return `
+    <div class="card">
+      <div class="card-header">来源地址列表</div>
+      <div class="card-body">
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr><th>IP / CIDR</th><th>操作</th></tr>
+            </thead>
+            <tbody id="src-tbody">
+              ${sources.length === 0
+                ? '<tr class="empty-row"><td colspan="2">暂无来源地址</td></tr>'
+                : sources.map(s => `<tr>
+                    <td><span class="tag">${esc(s)}</span></td>
+                    <td>
+                      <button class="btn btn-danger btn-sm" onclick="deleteSource('${esc(s)}',this)">删除</button>
+                    </td>
+                  </tr>`).join('')
+              }
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-header">新增来源地址</div>
+      <div class="card-body">
+        <form onsubmit="addSource(event)">
+          <div class="form-grid">
+            <div class="form-group">
+              <label>IP 地址 / CIDR *</label>
+              <input type="text" id="src-in" placeholder="如 192.168.1.0/24 或 10.0.0.1" required />
+            </div>
+          </div>
+          <div class="form-actions">
+            <div class="flags-row">
+              <label class="checkbox-group"><input type="checkbox" id="src-perm-only"> 仅永久</label>
+              <label class="checkbox-group"><input type="checkbox" id="src-rt-only"> 仅运行时</label>
+            </div>
+            <button type="submit" class="btn btn-primary">添加来源</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  `;
+}
+
+async function addSource(e) {
+  e.preventDefault();
+  const source = document.getElementById('src-in').value.trim();
+  const permanent_only = document.getElementById('src-perm-only').checked;
+  const runtime_only = document.getElementById('src-rt-only').checked;
+  try {
+    const data = await api('POST', `/zones/${currentZone}/sources`, { source, permanent_only, runtime_only });
+    if (data.success) {
+      toast(data.message);
+      refreshTab('sources');
+    } else {
+      toast(data.message, 'error');
+    }
+  } catch(err) {
+    toast('请求失败：网络错误', 'error');
+  }
+}
+
+async function deleteSource(source, btn) {
+  if (!confirm(`确认删除来源地址 ${source}？`)) return;
+  btn.disabled = true;
+  try {
+    const data = await api('DELETE', `/zones/${currentZone}/sources`, { source });
+    if (data.success) {
+      toast(data.message);
+      refreshTab('sources');
+    } else {
+      toast(data.message, 'error');
+      btn.disabled = false;
+    }
+  } catch(err) {
+    toast('请求失败：网络错误', 'error');
+    btn.disabled = false;
+  }
+}
+
+/* ---- Refresh single tab ---- */
+async function refreshTab(tabName) {
+  if (!currentZone) return;
+  try {
+    const data = await api('GET', `/zones/${currentZone}`);
+    if (!data.success) return;
+    const d = data.data;
+
+    // Update stat cards if overview exists
+    const overviewPanel = document.getElementById('tab-overview');
+    if (overviewPanel) overviewPanel.innerHTML = renderOverview(d);
+
+    if (tabName === 'ports') {
+      document.getElementById('tab-ports').innerHTML = renderPorts(d.ports || []);
+    } else if (tabName === 'services') {
+      document.getElementById('tab-services').innerHTML = renderServices(d.services || []);
+    } else if (tabName === 'rich-rules') {
+      currentRichRules = d.rich_rules || [];
+      document.getElementById('tab-rich-rules').innerHTML = renderRichRules(currentRichRules);
+    } else if (tabName === 'sources') {
+      document.getElementById('tab-sources').innerHTML = renderSources(d.sources || []);
+    }
+  } catch(e) { /* ignore */ }
+}
+
+/* ---- Init ---- */
+async function init() {
+  await Promise.all([loadStatus(), loadZones(), loadAllServices()]);
+}
+
+init();
+</script>
+</body>
+</html>
