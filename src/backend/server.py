@@ -7,7 +7,7 @@
 import re
 import subprocess
 
-from flask import Flask, jsonify, request
+from flask import Flask, jsonify, render_template, request
 
 app = Flask(__name__)
 
@@ -155,6 +155,15 @@ def apply_rule_cmd(base_args: list[str], apply_runtime: bool, apply_permanent: b
             return False, out
 
     return True, ""
+
+
+# ---------------------------------------------------------------------------
+# 前端页面
+# ---------------------------------------------------------------------------
+
+@app.get("/")
+def index():
+    return render_template("index.html")
 
 
 # ---------------------------------------------------------------------------
