@@ -22,6 +22,8 @@ VALID_ACTIONS = {"accept", "reject", "drop"}
 VALID_LOG_LEVELS = {"emerg", "alert", "crit", "err", "warning", "notice", "info", "debug"}
 VALID_FAMILIES = {"ipv4", "ipv6"}
 
+ALREADY_ENABLED_PATTERN = re.compile(r"already_enabled|already enabled", re.IGNORECASE)
+
 PORT_PATTERN = re.compile(r"^\d+(-\d+)?$")
 CIDR_PATTERN = re.compile(
     r"^(\d{1,3}\.){3}\d{1,3}(/\d{1,2})?$"
@@ -68,14 +70,14 @@ def zone_exists(zone: str) -> bool:
 
 
 def parse_persistence_flags(body: dict) -> tuple[bool, bool]:
-    """解析 permanent_only / runtime_only，返回 (apply_runtime, apply_permanent)"""
-    permanent_only = bool(body.get("permanent_only", False))
+    """解析 permanent / runtime_only，返回 (apply_runtime, apply_permanent)"""
+    permanent = bool(body.get("permanent", False))
     runtime_only = bool(body.get("runtime_only", False))
-    if permanent_only:
-        return False, True
     if runtime_only:
         return True, False
-    return True, True  # 默认两者都应用
+    if permanent:
+        return True, True
+    return True, False  # 默认仅运行时
 
 
 def build_rich_rule(
@@ -143,15 +145,26 @@ def apply_rule_cmd(base_args: list[str], apply_runtime: bool, apply_permanent: b
     对 runtime 和/或 permanent 执行同一条规则命令。
     base_args 不含 --permanent，例如：
       ["firewall-cmd", "--zone=public", "--add-port=8080/tcp"]
+
+    返回 (False, "__ALREADY_EXISTS__") 表示规则在所有目标作用域均已存在，调用方应返回 409。
     """
+    runtime_already_exists = False
+
     if apply_runtime:
         ok_, out = run_cmd(base_args)
         if not ok_:
-            return False, out
+            if ALREADY_ENABLED_PATTERN.search(out) and apply_permanent:
+                runtime_already_exists = True  # 运行时已存在，继续尝试持久化
+            else:
+                return False, out
 
     if apply_permanent:
         ok_, out = run_cmd(base_args + ["--permanent"])
         if not ok_:
+            if ALREADY_ENABLED_PATTERN.search(out):
+                if runtime_already_exists or not apply_runtime:
+                    return False, "__ALREADY_EXISTS__"
+                return True, ""  # 永久已存在，运行时刚添加成功，视为成功
             return False, out
 
     return True, ""
@@ -288,14 +301,11 @@ def add_port(zone_name: str):
     if source_ip:
         # 指定源 IP 时使用富规则
         rule = f'rule family="ipv4" source address="{source_ip}" port port="{port}" protocol="{protocol}" accept'
-        # 检查富规则是否已存在
-        ok_, existing = run_cmd(["firewall-cmd", f"--zone={zone_name}", "--list-rich-rules"])
-        if ok_ and rule in existing:
-            return err(f"端口规则 {port_proto} (source: {source_ip}) 已存在于 Zone {zone_name} 中", 409)
-
         base_args = ["firewall-cmd", f"--zone={zone_name}", f"--add-rich-rule={rule}"]
         success, out = apply_rule_cmd(base_args, apply_runtime, apply_permanent)
         if not success:
+            if out == "__ALREADY_EXISTS__":
+                return err(f"端口规则 {port_proto} (source: {source_ip}) 已存在于 Zone {zone_name} 中", 409)
             return err(f"添加端口规则失败：{out}", 500)
         return ok({
             "zone": zone_name,
@@ -306,13 +316,11 @@ def add_port(zone_name: str):
         }, "端口规则添加成功")
     else:
         # 无源 IP 限制，使用普通端口开放
-        ok_, existing = run_cmd(["firewall-cmd", f"--zone={zone_name}", "--list-ports"])
-        if ok_ and port_proto in existing.split():
-            return err(f"端口规则 {port_proto} 已存在于 Zone {zone_name} 中", 409)
-
         base_args = ["firewall-cmd", f"--zone={zone_name}", f"--add-port={port_proto}"]
         success, out = apply_rule_cmd(base_args, apply_runtime, apply_permanent)
         if not success:
+            if out == "__ALREADY_EXISTS__":
+                return err(f"端口规则 {port_proto} 已存在于 Zone {zone_name} 中", 409)
             return err(f"添加端口规则失败：{out}", 500)
         return ok({
             "zone": zone_name,
@@ -420,15 +428,12 @@ def add_service(zone_name: str):
     if ok_ and service not in all_svc.split():
         return err(f"服务 '{service}' 不是有效的 firewalld 服务名", 400)
 
-    # 检查是否已存在
-    ok_, existing = run_cmd(["firewall-cmd", f"--zone={zone_name}", "--list-services"])
-    if ok_ and service in existing.split():
-        return err(f"服务规则 '{service}' 已存在于 Zone {zone_name} 中", 409)
-
     apply_runtime, apply_permanent = parse_persistence_flags(body)
     base_args = ["firewall-cmd", f"--zone={zone_name}", f"--add-service={service}"]
     success, out = apply_rule_cmd(base_args, apply_runtime, apply_permanent)
     if not success:
+        if out == "__ALREADY_EXISTS__":
+            return err(f"服务规则 '{service}' 已存在于 Zone {zone_name} 中", 409)
         return err(f"添加服务规则失败：{out}", 500)
     return ok({
         "zone": zone_name,
@@ -512,14 +517,11 @@ def add_rich_rule(zone_name: str):
         if not rule:
             return err("缺少必填参数：rule（或使用 structured=true 模式）", 400)
 
-    # 检查是否已存在
-    ok_, existing = run_cmd(["firewall-cmd", f"--zone={zone_name}", "--list-rich-rules"])
-    if ok_ and rule in existing:
-        return err(f"富规则已存在于 Zone {zone_name} 中", 409)
-
     base_args = ["firewall-cmd", f"--zone={zone_name}", f"--add-rich-rule={rule}"]
     success, out = apply_rule_cmd(base_args, apply_runtime, apply_permanent)
     if not success:
+        if out == "__ALREADY_EXISTS__":
+            return err(f"富规则已存在于 Zone {zone_name} 中", 409)
         return err(f"添加富规则失败：{out}", 500)
     return ok({
         "zone": zone_name,
@@ -584,14 +586,12 @@ def add_source(zone_name: str):
     if not CIDR_PATTERN.match(source):
         return err("source 格式无效，示例：192.168.1.0/24 或 10.0.0.1", 400)
 
-    ok_, existing = run_cmd(["firewall-cmd", f"--zone={zone_name}", "--list-sources"])
-    if ok_ and source in existing.split():
-        return err(f"来源地址 '{source}' 已存在于 Zone {zone_name} 中", 409)
-
     apply_runtime, apply_permanent = parse_persistence_flags(body)
     base_args = ["firewall-cmd", f"--zone={zone_name}", f"--add-source={source}"]
     success, out = apply_rule_cmd(base_args, apply_runtime, apply_permanent)
     if not success:
+        if out == "__ALREADY_EXISTS__":
+            return err(f"来源地址 '{source}' 已存在于 Zone {zone_name} 中", 409)
         return err(f"添加来源地址失败：{out}", 500)
     return ok({
         "zone": zone_name,

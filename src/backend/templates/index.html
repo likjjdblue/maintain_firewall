@@ -715,7 +715,7 @@ function renderPorts(ports) {
           </div>
           <div class="form-actions">
             <div class="flags-row">
-              <label class="checkbox-group"><input type="checkbox" id="port-perm-only"> 仅永久</label>
+              <label class="checkbox-group"><input type="checkbox" id="port-permanent"> 永久</label>
               <label class="checkbox-group"><input type="checkbox" id="port-rt-only"> 仅运行时</label>
             </div>
             <button type="submit" class="btn btn-primary">
@@ -734,9 +734,9 @@ async function addPort(e) {
   const port = document.getElementById('port-in').value.trim();
   const protocol = document.getElementById('port-proto').value;
   const source_ip = document.getElementById('port-src').value.trim();
-  const permanent_only = document.getElementById('port-perm-only').checked;
+  const permanent = document.getElementById('port-permanent').checked;
   const runtime_only = document.getElementById('port-rt-only').checked;
-  const body = { port, protocol, permanent_only, runtime_only };
+  const body = { port, protocol, permanent, runtime_only };
   if (source_ip) body.source_ip = source_ip;
   try {
     const data = await api('POST', `/zones/${currentZone}/ports`, body);
@@ -816,7 +816,7 @@ function renderServices(services) {
           </div>
           <div class="form-actions">
             <div class="flags-row">
-              <label class="checkbox-group"><input type="checkbox" id="svc-perm-only"> 仅永久</label>
+              <label class="checkbox-group"><input type="checkbox" id="svc-permanent"> 永久</label>
               <label class="checkbox-group"><input type="checkbox" id="svc-rt-only"> 仅运行时</label>
             </div>
             <button type="submit" class="btn btn-primary">添加服务</button>
@@ -831,10 +831,10 @@ async function addService(e) {
   e.preventDefault();
   const service = document.getElementById('svc-name').value;
   if (!service) { toast('请选择服务名称', 'error'); return; }
-  const permanent_only = document.getElementById('svc-perm-only').checked;
+  const permanent = document.getElementById('svc-permanent').checked;
   const runtime_only = document.getElementById('svc-rt-only').checked;
   try {
-    const data = await api('POST', `/zones/${currentZone}/services`, { service, permanent_only, runtime_only });
+    const data = await api('POST', `/zones/${currentZone}/services`, { service, permanent, runtime_only });
     if (data.success) {
       toast(data.message);
       refreshTab('services');
@@ -908,7 +908,7 @@ function renderRichRules(rules) {
             </div>
             <div class="form-actions" style="margin-top:10px;">
               <div class="flags-row">
-                <label class="checkbox-group"><input type="checkbox" id="rr-raw-perm-only"> 仅永久</label>
+                <label class="checkbox-group"><input type="checkbox" id="rr-raw-permanent"> 永久</label>
                 <label class="checkbox-group"><input type="checkbox" id="rr-raw-rt-only"> 仅运行时</label>
               </div>
               <button type="submit" class="btn btn-primary">添加富规则</button>
@@ -987,7 +987,7 @@ function renderRichRules(rules) {
             <div class="form-actions" style="margin-top:10px;">
               <label class="checkbox-group"><input type="checkbox" id="rr-src-invert"> 来源地址取反</label>
               <div class="flags-row" style="margin-left:8px;">
-                <label class="checkbox-group"><input type="checkbox" id="rr-struct-perm-only"> 仅永久</label>
+                <label class="checkbox-group"><input type="checkbox" id="rr-struct-permanent"> 永久</label>
                 <label class="checkbox-group"><input type="checkbox" id="rr-struct-rt-only"> 仅运行时</label>
               </div>
               <button type="submit" class="btn btn-primary">添加富规则</button>
@@ -1014,10 +1014,10 @@ async function addRichRuleRaw(e) {
   e.preventDefault();
   const rule = document.getElementById('rr-raw-input').value.trim();
   if (!rule) { toast('请输入规则字符串', 'error'); return; }
-  const permanent_only = document.getElementById('rr-raw-perm-only').checked;
+  const permanent = document.getElementById('rr-raw-permanent').checked;
   const runtime_only = document.getElementById('rr-raw-rt-only').checked;
   try {
-    const data = await api('POST', `/zones/${currentZone}/rich-rules`, { rule, permanent_only, runtime_only });
+    const data = await api('POST', `/zones/${currentZone}/rich-rules`, { rule, permanent, runtime_only });
     if (data.success) {
       toast(data.message);
       refreshTab('rich-rules');
@@ -1044,7 +1044,7 @@ async function addRichRuleStruct(e) {
     log_prefix: document.getElementById('rr-log-prefix').value.trim(),
     log_level: document.getElementById('rr-log-level').value,
     priority: parseInt(document.getElementById('rr-priority').value) || 0,
-    permanent_only: document.getElementById('rr-struct-perm-only').checked,
+    permanent: document.getElementById('rr-struct-permanent').checked,
     runtime_only: document.getElementById('rr-struct-rt-only').checked,
   };
   try {
@@ -1119,7 +1119,7 @@ function renderSources(sources) {
           </div>
           <div class="form-actions">
             <div class="flags-row">
-              <label class="checkbox-group"><input type="checkbox" id="src-perm-only"> 仅永久</label>
+              <label class="checkbox-group"><input type="checkbox" id="src-permanent"> 永久</label>
               <label class="checkbox-group"><input type="checkbox" id="src-rt-only"> 仅运行时</label>
             </div>
             <button type="submit" class="btn btn-primary">添加来源</button>
@@ -1133,10 +1133,10 @@ function renderSources(sources) {
 async function addSource(e) {
   e.preventDefault();
   const source = document.getElementById('src-in').value.trim();
-  const permanent_only = document.getElementById('src-perm-only').checked;
+  const permanent = document.getElementById('src-permanent').checked;
   const runtime_only = document.getElementById('src-rt-only').checked;
   try {
-    const data = await api('POST', `/zones/${currentZone}/sources`, { source, permanent_only, runtime_only });
+    const data = await api('POST', `/zones/${currentZone}/sources`, { source, permanent, runtime_only });
     if (data.success) {
       toast(data.message);
       refreshTab('sources');
